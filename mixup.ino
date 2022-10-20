@@ -175,8 +175,6 @@ void displayTime() {
 void handleConvertDataTimesFromClient(uint8_t *data, size_t len) {
   alarmClocks = (char*)data;
   indexAlarmClocks = (len + 1) / 6;
-  Serial.println(indexAlarmClocks);
-  Serial.println(alarmClocks);
 }
 
 String convertLapSwitch() {
@@ -190,7 +188,7 @@ void handleLapSwitch(uint8_t *data) {
     lapSwitch = 1;
   }
   else lapSwitch = 0;    
-   digitalWrite(lap, lapSwitch); 
+   digitalWrite(lap, lapSwitch);
 }
 
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
@@ -207,12 +205,21 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   }
 }
 
+void handleClientOpenWeb() {
+  server.on("/statusSwitch", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", convertLapSwitch());
+  });
+  server.on("/dataAlarmClock", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", alarmClocks);
+  });  
+}
 
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
              void *arg, uint8_t *data, size_t len) {
   switch (type) {
     case WS_EVT_CONNECT:
       Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+      handleClientOpenWeb();
       break;
     case WS_EVT_DISCONNECT:
       Serial.printf("WebSocket client #%u disconnected\n", client->id());
@@ -252,10 +259,6 @@ bool checkAlarm() {
       minuteTemp += alarmClocks[4 + i*6];
       int hourToInt = hourTemp.toInt();
       int minuteToInt = minuteTemp.toInt();
-//      Serial.println(hourCheck);
-//      Serial.println(minuteCheck);
-//      Serial.println(hourToInt);
-//      Serial.println(minuteToInt);
       if (hourToInt == hourCheck && minuteToInt == minuteCheck) return 1;
   }
   return 0;
@@ -304,12 +307,7 @@ void setup(){
   server.on("/icon.png", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(SPIFFS, "/icon.png", "image/png");
   });
-  server.on("/statusSwitch", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/plain", convertLapSwitch());
-  });
-  server.on("/dataAlarmClock", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/plain", alarmClocks);
-  });
+  handleClientOpenWeb();
  // Start Server
   server.begin();
  // Start Time
