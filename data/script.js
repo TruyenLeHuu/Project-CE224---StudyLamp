@@ -102,7 +102,6 @@ var valueSwap = {
 
 // Check data in some times
 
-//setInterval(configureValue, 1500);
 
 var gateway = `ws://${window.location.hostname}/ws`;
 var websocket;
@@ -114,12 +113,11 @@ var dataOfSever;
 
 
 window.addEventListener('load', onLoad);
+window.addEventListener('DOMContentLoaded', onLoaded);
 valueSwap.getAddressCheckSwitch().addEventListener('change', handleToggleSwitch);
-window.addEventListener('loaded', onLoaded)
 
 function handleDataFromServer() {
     const dataTemp = JSON.parse(dataOfSever);
-    // inverseDataTimes(dataTemp);
 }
 
 function handleToggleSwitch(event) {
@@ -166,14 +164,19 @@ function onLoad() {
 }
 
 function configureValue() {
-    valueSwap.getAddressCheckSwitch().checked = getSignal.responseText;
-    console.log(getSignal.responseText);
-    getSignal.open("GET", "./statusSwitch");
-    getSignal.send();
-    dataOfSever = getData.responseText;
-    console.log(dataOfSever);
-    getData.open("GET", "./dataAlarmClock");
-    getData.send();
+    fetch('/statusSwitch')
+        .then(response => response.text())
+        .then((signal) => {
+            console.log(signal);
+            valueSwap.getAddressCheckSwitch().checked = (signal === 'true');
+        });
+    fetch('/dataAlarmClock')
+        .then(response => response.text())
+        .then((data) => {
+            console.log(data);
+            clockTimes = data.split(',');
+            handleClockTimesDisplay();
+        });
 }
 
 function initWebSocket() {
@@ -194,5 +197,4 @@ function onClose(event) {
 
 function onLoaded(event) {
     configureValue();
-    handleClockTimesDisplay();
 }
