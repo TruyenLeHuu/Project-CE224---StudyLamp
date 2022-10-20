@@ -16,9 +16,10 @@
 #include <time.h>
 #include "DHT.h"
 
-#define LEDPIN 4
-#define ALARMPIN 2
-#define DHTPIN 5
+#define LEDPIN 2
+#define ALARMPIN 4
+#define DHTPIN 23
+#define BTPIN 32
 
 #define DHTTYPE DHT11
 const char* ssid = "1111";
@@ -115,7 +116,24 @@ void bongoCat() {
     display.display();
     delay(tt);
 }
-
+//Hien thi IP
+void displayIP(){
+  display.clearDisplay();
+  display.setCursor(0, 32);
+  while (WiFi.status() != WL_CONNECTED)
+  { 
+    display.print("  Anh em mai dinh  ");
+    display.display(); 
+    delay(500);
+  }
+  display.clearDisplay();
+  display.setCursor(0, 32);
+  display.print("   ");
+  display.print(WiFi.localIP());
+  display.println("   ");
+  display.display();   
+  delay(3000);
+}
 void registerDislay() {
   //Oled
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x64
@@ -136,24 +154,6 @@ void registerDislay() {
   delay(3000);
   bongoCat();  
   displayIP();
-}
-//Hien thi IP
-void displayIP(){
-  display.clearDisplay();
-  display.setCursor(0, 32);
-  while (WiFi.status() != WL_CONNECTED)
-  { 
-    display.print("  Anh em mai dinh  ");
-    display.display(); 
-    delay(500);
-  }
-  display.clearDisplay();
-  display.setCursor(0, 32);
-  display.print("   ");
-  display.print(WiFi.localIP());
-  display.println("   ");
-  display.display();   
-  delay(3000);
 }
 //Hien thi dong ho 
 void displayTime() {
@@ -327,7 +327,7 @@ void setup(){
 
   pinMode(LEDPIN, OUTPUT);
   pinMode(ALARMPIN, OUTPUT);
-  pinMode(0, INPUT);
+  pinMode(BTPIN, INPUT);
   initWebSocket();
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -364,7 +364,7 @@ void loop() {
     digitalWrite(ALARMPIN, true);
     delay(400);
     digitalWrite(ALARMPIN, false); 
-    if (digitalRead(0)==0) flagAlarm = 60;
+    if (digitalRead(BTPIN)==0) flagAlarm = 60;
   } else 
   ws.cleanupClients();
 }
