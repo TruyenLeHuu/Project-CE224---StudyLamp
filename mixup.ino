@@ -14,6 +14,7 @@
 #include <SPIFFS.h>
 #include <ESPAsyncWebServer.h>
 #include <time.h>
+#include "DHT.h"
 
 // Check WiFi Mode
 bool checkMode;
@@ -42,13 +43,14 @@ AsyncWebSocket ws("/ws");
 
 // Variable control lamp lighting
 bool lapSwitch = 0;
-const int lap = 4;
-const int alarmPin = 2;
 
 // Variable save of alarms
 int indexAlarmClocks = 0;
 String alarmClocks;
-
+int flagAlarm = 0;
+int flagTemp = 5;
+float t;
+float h;
 
 const char *ntpServer = "pool.ntp.org";     //kết nối tới NTP server
 const long gmtOffset_sec = 7;           //Múi giờ
@@ -58,6 +60,7 @@ const int daylightOffset_sec = 3600 * gmtOffset_sec;           //
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+DHT dht(DHTPIN, DHTTYPE);
 
 //Bitmap of Bongo Cat
 int xx = 32;
@@ -123,7 +126,24 @@ void bongoCat() {
     display.display();
     delay(tt);
 }
-
+//Hien thi IP
+void displayIP(){
+  display.clearDisplay();
+  display.setCursor(0, 32);
+  while (WiFi.status() != WL_CONNECTED)
+  { 
+    display.print("  Anh em mai dinh  ");
+    display.display(); 
+    delay(500);
+  }
+  display.clearDisplay();
+  display.setCursor(0, 32);
+  display.print("   ");
+  display.print(WiFi.localIP());
+  display.println("   ");
+  display.display();   
+  delay(3000);
+}
 void registerDislay() {
   //Oled
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x64
@@ -143,8 +163,8 @@ void registerDislay() {
   display.display();
   delay(3000);
   bongoCat();  
+  displayIP();
 }
-
 //Hien thi dong ho 
 void displayTime() {
   struct tm timeinfo;
@@ -156,17 +176,31 @@ void displayTime() {
   // We write the number of seconds elapsed 
   delay(500);
   display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
   display.setCursor(0, 0);
-  // Display static text
-  display.println(" ");
   display.setTextSize(1);
   display.setTextColor(BLACK, WHITE);
-  display.println("   Anh em mai dinh  ");
+  if (flagTemp++ >= 5){
+    flagTemp = 0;
+    h = dht.readHumidity();
+    // Read temperature as Celsius (the default)
+    t = dht.readTemperature();
+  }
+  if (isnan(h) || isnan(t)) {
+    Serial.println(F("Failed to read from DHT sensor!"));
+  } else {
+    char buf[5];
+    sprintf(buf, "%.1f", t);
+    display.print(" Temp:");
+    display.print(buf);
+    display.print("C Hum:");
+    sprintf(buf, "%.1f", h);
+    display.print(buf);
+    display.println("%");
+  }
+  // Display static text
+  display.println("");
   display.setTextSize(1);
   display.setTextColor(WHITE);
-  display.println(" ");
   display.println(&timeinfo, "   %A  ");
   display.println(&timeinfo, "  %d/%B/%Y ");
   display.display(); 
@@ -298,7 +332,7 @@ void handleLapSwitch(uint8_t *data) {
     lapSwitch = 1;
   }
   else lapSwitch = 0;    
-   digitalWrite(lap, lapSwitch);
+  digitalWrite(LEDPIN, lapSwitch); 
 }
 
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
@@ -358,6 +392,7 @@ bool checkAlarm() {
   if(!getLocalTime(&timeinfo)){
     Serial.println("Failed to obtain time");
   }
+  if (flagAlarm != 0) flagAlarm--;
   int hourCheck = timeinfo.tm_hour;
   int minuteCheck = timeinfo.tm_min;
   for (int i = 0; i < indexAlarmClocks; i++) {
