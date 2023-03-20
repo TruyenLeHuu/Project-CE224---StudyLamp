@@ -15,8 +15,24 @@
 #include <ESPAsyncWebServer.h>
 #include <time.h>
 
-const char* ssid = "Meow";
-const char* password =  "haimuoingan";
+// Check WiFi Mode
+bool checkMode;
+
+// Timer variables
+unsigned long previousMillis = 0;
+const long interval = 10000;  // interval to wait for Wi-Fi connection (milliseconds)
+
+// File paths
+const char* ssidPath = "/ssid.txt";
+const char* passwordPath = "/password.txt";
+
+// parameter in HTTP POST request
+const char* ssidInput = "ssid";
+const char* passwordInput = "password";
+  
+
+String ssid;
+String password;
 
 const char* myssid = "Configuration";
 const char* mypassword = "youresp32";
@@ -172,6 +188,102 @@ void displayTime() {
 
 ////////////////////////////////////////////////////////////////////
 
+// handle configure WiFi
+
+bool initWiFi() {
+   if(ssid==""){
+    Serial.println("Undefined SSID address.");
+    return false;
+  }
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+  Serial.println("Connecting to WiFi...");
+
+  unsigned long currentMillis = millis();
+  previousMillis = currentMillis;
+
+  while(WiFi.status() != WL_CONNECTED) {
+    currentMillis = millis();
+    if (currentMillis - previousMillis >= interval) {
+      Serial.println("Failed to connect.");
+      return false;
+    }
+  }
+
+  Serial.println(WiFi.localIP());
+  return true;
+}  
+
+void initModeAP() {
+  WiFi.softAP(myssid, mypassword);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.println(IP);
+  webWiFiConfigure();
+  configureWiFi();
+  server.begin();    
+}
+
+String scanWiFiavaible() {
+  int n = WiFi.scanNetworks();
+  String textNameWiFi = "";
+  for (int i = 0; i < n; i++) {
+    textNameWiFi += WiFi.SSID(i);
+    if (i != n - 1) textNameWiFi += " ,626x"; // Used String " ,626x" avoid confusion with SSID 
+  }
+  Serial.println(textNameWiFi);
+  return textNameWiFi;
+}
+
+void webWiFiConfigure() {
+  server.on("/dataWiFi", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", scanWiFiavaible());
+  });
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
+      request->send(SPIFFS, "/style.css", "text/css");
+  });
+  server.on("/icon.png", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(SPIFFS, "/icon.png", "image/png");
+  });
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+      request->send(SPIFFS, "/wifi.html", "text/html");
+  });
+    server.serveStatic("/", SPIFFS, "/");
+//  server.on("/wifi.js", HTTP_GET, [](AsyncWebServerRequest *request){
+//      request->send(SPIFFS, "/wifi.js", "text/javascript");
+//  });
+}
+
+void configureWiFi() {
+  server.on("/post", HTTP_POST, [](AsyncWebServerRequest *request) {
+    int params = request->params();
+      for(int i=0;i<params;i++){
+           AsyncWebParameter* p = request->getParam(i);
+           if(p->isPost()){
+            // HTTP POST ssid value
+              if (p->name() == ssidInput) {
+                  ssid = p->value().c_str();
+                  Serial.print("SSID set to: ");
+                  Serial.println(ssid);
+                  // Write file to save value
+                  writeFile(SPIFFS, ssidPath, ssid.c_str());  
+              }
+              if (p->name() == passwordInput) {
+                  password = p->value().c_str();
+                  Serial.print("Password set to: ");
+                  Serial.println(password);
+                  // Write file to save value
+                  writeFile(SPIFFS, passwordPath, password.c_str());   
+              }
+           }
+      }
+    request->send(200, "text/plain", "Done. ESP will restart");
+    delay(3000);
+    ESP.restart();
+  });    
+}
+
+// handle form Server control esp32
 void handleConvertDataTimesFromClient(uint8_t *data, size_t len) {
   alarmClocks = (char*)data;
   indexAlarmClocks = (len + 1) / 6;
@@ -180,8 +292,6 @@ void handleConvertDataTimesFromClient(uint8_t *data, size_t len) {
 String convertLapSwitch() {
     return (lapSwitch == 1) ? "true" : "false";   
 }
-
-
 
 void handleLapSwitch(uint8_t *data) { 
   if (strcmp((char*)data, "true") == 0) {
@@ -266,6 +376,53 @@ bool checkAlarm() {
 
 ////////////////////////////////////////////
 
+// Initialize SPIFFS
+
+////////////////////////////////////////////
+
+void initSPIFFS() {
+  if (!SPIFFS.begin(true)) {
+    Serial.println("An error has occurred while mounting SPIFFS");
+  }
+  Serial.println("SPIFFS mounted successfully");
+}
+
+// Read File from SPIFFS
+String readFile(fs::FS &fs, const char * path){
+  Serial.printf("Reading file: %s\r\n", path);
+
+  File file = fs.open(path);
+  if(!file || file.isDirectory()){
+    Serial.println("- failed to open file for reading");
+    return String();
+  }
+  
+  String fileContent;
+  while(file.available()){
+    fileContent = file.readStringUntil('\n');
+    break;     
+  }
+  return fileContent;
+}
+
+// Write file to SPIFFS
+void writeFile(fs::FS &fs, const char * path, const char * message){
+  Serial.printf("Writing file: %s\r\n", path);
+
+  File file = fs.open(path, FILE_WRITE);
+  if(!file){
+    Serial.println("- failed to open file for writing");
+    return;
+  }
+  if(file.print(message)){
+    Serial.println("- file written");
+  } else {
+    Serial.println("- frite failed");
+  }
+}
+
+////////////////////////////////////////////
+
 //      Run program
 
 ////////////////////////////////////////////
@@ -273,54 +430,59 @@ bool checkAlarm() {
 void setup(){
   Serial.begin(115200);
 
-  if(!SPIFFS.begin()){
-     Serial.println("An Error has occurred while mounting SPIFFS");
-     return;
+  initSPIFFS();
+  ssid = readFile(SPIFFS, ssidPath);
+  password = readFile(SPIFFS, passwordPath);
+  Serial.println(ssid);
+  Serial.println(password);
+  registerDislay(); // Generate display
+  checkMode = initWiFi();
+  if (checkMode) {
+      pinMode(lap, OUTPUT);
+      pinMode(alarmPin, OUTPUT);
+    
+      initWebSocket();
+    
+      server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+          request->send(SPIFFS, "/index.html", "text/html");
+      });
+    
+      server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
+          request->send(SPIFFS, "/style.css", "text/css");
+      });
+    
+      server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request){
+          request->send(SPIFFS, "/script.js", "text/javascript");
+      });
+      
+      server.on("/icon.png", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(SPIFFS, "/icon.png", "image/png");
+      });
+      handleClientOpenWeb();
+     // Start Server
+      server.begin();
+     // Start Time
+      configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+      Serial.println(WiFi.localIP());
+  }
+  else {
+      Serial.println("Setting AP (Access Point)");
+      initModeAP();
+      
   }
 
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
-  }
-
-  Serial.println(WiFi.localIP());
-
-  pinMode(lap, OUTPUT);
-  pinMode(alarmPin, OUTPUT);
-
-  initWebSocket();
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(SPIFFS, "/index.html", "text/html");
-  });
-
-  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(SPIFFS, "/style.css", "text/css");
-  });
-
-  server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(SPIFFS, "/script.js", "text/javascript");
-  });
   
-  server.on("/icon.png", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(SPIFFS, "/icon.png", "image/png");
-  });
-  handleClientOpenWeb();
- // Start Server
-  server.begin();
- // Start Time
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  registerDislay();
+
 }
 
 void loop() {
-  displayTime();
-  if (checkAlarm()) {
-    digitalWrite(alarmPin, true);
-    delay(400);
-    digitalWrite(alarmPin, false); 
+  if (checkMode) {
+      displayTime();
+      if (checkAlarm()) {
+        digitalWrite(alarmPin, true);
+        delay(400);
+        digitalWrite(alarmPin, false); 
+      }
+      ws.cleanupClients();
   }
-  ws.cleanupClients();
 }

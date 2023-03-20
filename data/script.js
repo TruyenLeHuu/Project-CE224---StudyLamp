@@ -72,8 +72,7 @@ function handleTimeLineBlockDisplay(element) {
 
 function handleSortTimeArray() {
     clockTimes.sort();
-    while (!clockTimes[0]) clockTimes.shift();
-    while (!clockTimes[clockTimes['length']-1]) clockTimes.pop();
+    while (!clockTimes[clockTimes['length']-1] && clockTimes['length'] != 0) clockTimes.pop();
     sendDataAlarmClockToServer();
 }
 
@@ -105,10 +104,7 @@ var valueSwap = {
 
 var gateway = `ws://${window.location.hostname}/ws`;
 var websocket;
-var getData = new XMLHttpRequest();
-var getSignal = new XMLHttpRequest();
 
-var dataOfSever;
 
 
 
@@ -116,9 +112,7 @@ window.addEventListener('load', onLoad);
 window.addEventListener('DOMContentLoaded', onLoaded);
 valueSwap.getAddressCheckSwitch().addEventListener('change', handleToggleSwitch);
 
-function handleDataFromServer() {
-    const dataTemp = JSON.parse(dataOfSever);
-}
+
 
 function handleToggleSwitch(event) {
     handleSwitchDisplay();
@@ -169,14 +163,17 @@ function configureValue() {
         .then((signal) => {
             console.log(signal);
             valueSwap.getAddressCheckSwitch().checked = (signal === 'true');
-        });
+        })
+        .catch((error) => console.log('Error'));
+        
     fetch('/dataAlarmClock')
         .then(response => response.text())
         .then((data) => {
             console.log(data);
             clockTimes = data.split(',');
             handleClockTimesDisplay();
-        });
+        })
+        .catch((error) => console.log('Error'));
 }
 
 function initWebSocket() {
